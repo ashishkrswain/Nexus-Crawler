@@ -1,3 +1,6 @@
 certstream==1.12
 aiohttp==3.9.5
 asyncio
+gspread==6.1.2
+gspread-formatting==1.1.2
+python-dotenv==1.0.1
