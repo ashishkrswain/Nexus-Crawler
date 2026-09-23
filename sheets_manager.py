@@ -15,20 +15,22 @@ class SheetsManager:
         # 1. Settings Tab
         try:
             self.ws_settings = self.sh.worksheet("Settings")
+            # Ensure the new rows exist for people upgrading from Phase 4
+            if not self.ws_settings.acell('A3').value:
+                self.ws_settings.update('A3:B4', [
+                    ['Target_Industry', 'AI Startups'],
+                    ['Target_Amount', '10']
+                ])
         except gspread.exceptions.WorksheetNotFound:
             print("[Sheets] Creating 'Settings' tab...")
             self.ws_settings = self.sh.add_worksheet(title="Settings", rows="20", cols="4")
-            self.ws_settings.update('A1:B2', [['Setting', 'Value'], ['JINA_API_KEY', '']])
+            self.ws_settings.update('A1:B4', [
+                ['Setting', 'Value'], 
+                ['JINA_API_KEY', ''],
+                ['Target_Industry', 'AI Startups'],
+                ['Target_Amount', '10']
+            ])
             self._format_header(self.ws_settings, "A1:B1", bg_color=(0.16, 0.5, 0.73)) # Blue
-            
-        # 2. Extracted Data Tab
-        try:
-            self.ws_data = self.sh.worksheet("Extracted JSON")
-        except gspread.exceptions.WorksheetNotFound:
-            print("[Sheets] Creating 'Extracted JSON' tab...")
-            self.ws_data = self.sh.add_worksheet(title="Extracted JSON", rows="1000", cols="5")
-            self.ws_data.update('A1:E1', [['Timestamp', 'Domain', 'Status', 'Jina JSON Output', 'Notes']])
-            self._format_header(self.ws_data, "A1:E1", bg_color=(0.18, 0.8, 0.44)) # Green
             
         # Delete default Sheet1 if exists
         try:
@@ -36,8 +38,6 @@ class SheetsManager:
             self.sh.del_worksheet(sheet1)
         except:
             pass
-            
-        print("[Sheets] All tabs configured and formatted!")
 
     def _format_header(self, ws, range_name, bg_color):
         fmt = cellFormat(
@@ -64,10 +64,31 @@ class SheetsManager:
         except Exception as e:
             print(f"[Sheets Error] Could not update API Key in sheet: {e}")
 
-    def append_extracted_data(self, domain, json_output, status="SUCCESS"):
-        """Appends a new row of scraped data to the sheet."""
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    def get_settings(self):
+        """Reads industry and amount settings."""
         try:
-            self.ws_data.append_row([timestamp, domain, status, json_output, ""])
+            industry = self.ws_settings.acell('B3').value or "General Startups"
+            amount = int(self.ws_settings.acell('B4').value or 10)
+            return str(industry), amount
+        except:
+            return "General Startups", 10
+
+    def create_batch_tab(self, industry, data_rows):
+        """Creates a new tab for the finished batch and writes all data."""
+        date_str = datetime.datetime.now().strftime("%b%d")
+        amount = len(data_rows)
+        # Clean tab name
+        tab_name = f"{str(industry)[:15]}_{date_str}_{amount}".replace(" ", "_").replace(".", "")
+        
+        try:
+            ws = self.sh.add_worksheet(title=tab_name, rows=str(max(100, amount+10)), cols="5")
+            ws.update('A1:E1', [['Timestamp', 'URL', 'Status', 'Jina JSON Output', 'Notes']])
+            self._format_header(ws, "A1:E1", bg_color=(0.6, 0.2, 0.8)) # Purple
+            
+            if data_rows:
+                ws.append_rows(data_rows)
+            print(f"[Sheets] Successfully created and populated batch tab: {tab_name}")
+            return tab_name
         except Exception as e:
-            print(f"[Sheets Error] Failed to write {domain} to sheet: {e}")
+            print(f"[Sheets Error] Could not create batch tab: {e}")
+            return None
